@@ -1,0 +1,107 @@
+\documentclass[10pt]{article}
+
+\usepackage{amsfonts,amsmath, amssymb, latexsym}
+\usepackage{graphicx}
+\usepackage{algorithm,algorithmic}
+\usepackage{color}
+
+\renewcommand{\algorithmiccomment}[1]{\\ $\rhd$ #1}
+\newcommand{\dis}{\displaystyle}
+\newcommand{\lt}{\left}
+\newcommand{\rt}{\right}
+\textwidth=6.5in \oddsidemargin=0in \evensidemargin=0in
+\topmargin=0in \headsep=0.25in \headheight=14.5pt \textheight=8.8in
+
+\graphicspath{{fig/}}
+
+\begin{document}
+
+\title{Parallel Symmetric Tridiagonalization \\ Using Successive Band Reduction}
+%\author{Grey Ballard, Nick Knight}
+
+\maketitle
+
+\subsection{ideas}
+
+\begin{itemize}
+	\item gap between non-overlapping bulges (in cols): $2c+d-b$
+	\begin{itemize}
+		\item space required for each bulge (in cols): $3c+2d-b$
+		\item if $c=d=b/2$, then $3/2 b$ is the space required
+	\end{itemize}
+
+	\item number of bulges per proc is $cols / (3c+2d-b)$
+	\begin{itemize}
+		\item if $c=d=b/2$, then we get $2/3 * cols / b$
+	\end{itemize}
+
+	\item number of parallelograms per proc is $cols / d = 2 * cols / b$
+
+	\item so we can chase $1/4$ of the bulges for a given proc into the next proc's columns without overlapping
+
+	\item possible optimization: don't chase the whole bulge, just zero the cols of the bulge which would cause an increase in working bandwidth (like Lang's alg)
+	
+	\item how do we make this block-cyclic instead of just blocked to tradeoff parallelism with latency cost?
+	
+	\item how do we add orthogonal transformation update functionality?
+	
+	\item what is the performance (words/msgs/flops) of Lang's algorithm?
+	
+	\item how do we adapt this for shared memory (PLASMA)?
+	
+\end{itemize}
+
+\section{Introduction}
+
+\section{Algorithm}
+
+\subsection{Reduction to Banded Form}
+
+\subsection{Successive Band Reduction}
+
+For the reduction of a symmetric banded matrix to tridiagonal form, we assume the lower half of the matrix is stored with an equal number of columns stored on each processor involved in the reduction.  See Figure~\ref{fig:bandedlayout} for the block column version of this storage layout.  Given $P$ processors involved in the reduction of a matrix of size $n$ and bandwidth $b$, define $C = \frac{n}{P}$ as the number of columns stored on each processor.  The initial local memory requirements for each processor is then $bC$ words.
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=.3]{bandedlayout}
+	\caption{Block column layout for lower half of symmetric banded matrix (four processors shown here).}
+	\label{fig:bandedlayout}
+\end{figure}
+
+The parallel algorithm works by annihilating a subset of the band using an orthogonal transformation which creates a ``bulge'' farther down the band.  The next step is to ``chase the bulge'' farther down the band using a sequence of orthogonal transformations until the bulge is chased off the end.  By repeating the process and annihilating the right subsets of the band in the right order, the algorithm reduces the banded matrix to tridiagonal form.  Since bulge-chasing is a local operation, bulges can be chased in parallel and the annihilation operations can be pipelined.
+
+At the high level, there are three kernels: {\tt create\_bulges}, {\tt pass\_bulges}, {\tt clear\_bulges}.  Both {\tt create\_bulges} and {\tt pass\_bulges} require $2C$ columns to pass information from one processor's columns to the next.  The {\tt clear\_bulges} kernel is only executed by the last processor and requires only the last $C$ columns of the entire matrix.  The high level functionality of these kernels is shown in Figures~\ref{fig:createbulges}, \ref{fig:passbulges}, and \ref{fig:clearbulges}.
+
+At any time, a processor will have access to and update only its own $C$ columns of the matrix and possibly the $C$ columns of its neighbor to the right.  For example, the parallel algorithm begins with the second processor sending its columns to the first processor.  After the first processor executes the {\tt create\_bulges} kernel, it sends the updated $2^{nd}$ set of $C$ columns (with bulges) back to the second processor.  The second processor must then also receive the third processor's $C$ columns in order to execute the {\tt pass\_bulges} kernel.
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=.4]{createbulges}
+	\caption{High level functionality of {\tt create\_bulges}, which eliminates a set of parallelograms and chases the bulges into the next set of columns (works on $2C$ columns of the matrix).}
+	\label{fig:createbulges}
+\end{figure}
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=.4]{passbulges}
+	\caption{High level functionality of {\tt pass\_bulges}, which chases a set of bulges from one set of columns to the next (works on $2C$ columns of the matrix).}
+	\label{fig:passbulges}
+\end{figure}
+
+\begin{figure}
+	\centering
+	\includegraphics[scale=.4]{clearbulges}
+	\caption{High level functionality of {\tt clear\_bulges}, which chases a set of bulges off the end of the band (works on the last $C$ columns of the matrix).}
+	\label{fig:clearbulges}
+\end{figure}
+
+\section{Complexity Analysis}
+
+\cite{*}
+
+\bibliographystyle{plain}
+\bibliography{sbr}
+
+\end{document}
+
+
